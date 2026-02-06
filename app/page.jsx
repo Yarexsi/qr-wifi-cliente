@@ -332,7 +332,11 @@ export default function Page() {
     const labelH = LABEL_OUT_PX.h;
     const padX = 30;
     const padY = 40;
-    const gap = 18;
+    // Layout tuning for 50x30mm (1000x600px): keep bands readable without clipping.
+    const gapAttentionQr = 2;
+    const gapQrToSeparator = 8;
+    const separatorW = 2;
+    const gapSeparatorToContact = 10;
     const attentionBandW = 260;
     const contactLine1 = "Llámanos:";
     const contactLine2 = "(664) 954 6020";
@@ -354,12 +358,48 @@ export default function Page() {
 
     const innerH = labelH - padY * 2;
     const qrSize = innerH;
-    const contactBandW = Math.max(120, labelW - padX * 2 - attentionBandW - qrSize - gap * 2);
+    const contactBandW = Math.max(
+      120,
+      labelW -
+        padX * 2 -
+        attentionBandW -
+        qrSize -
+        gapAttentionQr -
+        gapQrToSeparator -
+        separatorW -
+        gapSeparatorToContact
+    );
 
-    const drawVerticalTwoLine = ({ bandCenterX, bandCenterY, maxLen, t1, t2 }) => {
-      const t1Px = fitTextSize(ctx, { text: t1, maxWidth: maxLen, weight: 900, startPx: 72, minPx: 42 });
-      const t2Px = fitTextSize(ctx, { text: t2, maxWidth: maxLen, weight: 900, startPx: 72, minPx: 42 });
-      const lineGap = 18;
+    const drawVerticalTwoLine = ({
+      bandCenterX,
+      bandCenterY,
+      maxLen,
+      t1,
+      t2,
+      weight = 900,
+      startPx = 72,
+      minPx = 42,
+      lineGap = 18,
+      maxStackPx = null,
+    }) => {
+      // First, fit each line to the available length (label height).
+      let t1Px = fitTextSize(ctx, { text: t1, maxWidth: maxLen, weight, startPx, minPx });
+      let t2Px = fitTextSize(ctx, { text: t2, maxWidth: maxLen, weight, startPx, minPx });
+
+      // Then, ensure the 2-line stack also fits within the band's thickness (to avoid clipping).
+      if (typeof maxStackPx === "number" && Number.isFinite(maxStackPx)) {
+        const floor = Math.max(18, minPx);
+        for (let i = 0; i < 60; i += 1) {
+          const total = t1Px + lineGap + t2Px;
+          if (total <= maxStackPx) break;
+          // Prefer shrinking the first line slightly ("Llámanos") to preserve the number.
+          if (t1Px > floor) t1Px -= 2;
+          if (t1Px + lineGap + t2Px <= maxStackPx) break;
+          if (t2Px > floor) t2Px -= 2;
+          if (t1Px <= floor && t2Px <= floor) break;
+        }
+      }
+
       const total = t1Px + lineGap + t2Px;
 
       ctx.save();
@@ -368,9 +408,9 @@ export default function Page() {
       ctx.fillStyle = "#000000";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      setFont(ctx, { weight: 900, sizePx: t1Px });
+      setFont(ctx, { weight, sizePx: t1Px });
       ctx.fillText(t1, 0, -total / 2 + t1Px / 2);
-      setFont(ctx, { weight: 900, sizePx: t2Px });
+      setFont(ctx, { weight, sizePx: t2Px });
       ctx.fillText(t2, 0, total / 2 - t2Px / 2);
       ctx.restore();
     };
@@ -397,8 +437,10 @@ export default function Page() {
       maxLen: innerH,
       t1: line1,
       t2: line2,
+      // Attention block has plenty of thickness; keep default sizing.
+      maxStackPx: attentionBandW - 16,
     });
-    x += attentionBandW + gap;
+    x += attentionBandW + gapAttentionQr;
 
     // 2) QR rotated -90° (same orientation as the vertical text)
     const qrX = x;
@@ -416,15 +458,28 @@ export default function Page() {
     ctx.drawImage(qrImg, Math.round(-drawW / 2), Math.round(-drawH / 2), drawW, drawH);
     ctx.restore();
 
-    x += qrSize + gap;
+    x += qrSize;
 
-    // 3) Llámanos (vertical)
+    // 3) Separator line (between QR and contact)
+    x += gapQrToSeparator;
+    ctx.save();
+    ctx.fillStyle = "#000000";
+    ctx.globalAlpha = 0.65;
+    ctx.fillRect(Math.round(x), padY, separatorW, innerH);
+    ctx.restore();
+    x += separatorW + gapSeparatorToContact;
+
+    // 4) Llámanos (vertical) - slightly smaller so the number never clips.
     drawVerticalTwoLine({
       bandCenterX: x + contactBandW / 2,
       bandCenterY: labelH / 2,
       maxLen: innerH,
       t1: contactLine1,
       t2: contactLine2,
+      startPx: 62,
+      minPx: 30,
+      lineGap: 12,
+      maxStackPx: contactBandW - 10,
     });
 
     return canvas.toDataURL("image/png");
