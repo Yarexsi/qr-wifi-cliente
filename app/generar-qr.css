@@ -1,0 +1,132 @@
+/* Scope-only overrides for Generador de QR WiFi (formato tipo Entrada de material) */
+
+.generar-qr-page {
+  --color-accent: var(--color-primary);
+  --color-success: var(--color-primary);
+}
+
+.generar-qr-page .operacion-scope {
+  --primary: var(--secondary);
+  --red7-green-hover: var(--secondary);
+}
+
+.generar-qr-page .form-input:focus,
+.generar-qr-page .form-select:focus,
+.generar-qr-page .form-textarea:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 25%, transparent);
+}
+
+.generar-qr-page .print-summary {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+@media print {
+  .generar-qr-page .no-print { display: none !important; }
+  .menu-sidebar { display: none !important; }
+  .main-content { margin-left: 0 !important; min-height: 0 !important; height: 40mm !important; overflow: hidden !important; }
+  .content-wrapper { padding: 0 !important; gap: 0 !important; height: 40mm !important; overflow: hidden !important; }
+
+
+  .generar-qr-page { --qr-label-width: 30mm; --qr-label-height: 40mm; --calib-x: 0mm; --logo-box: 6mm; --qr-box: 21mm; --text-box: 9mm; --footer-box: 4mm; --qr-size: 20mm; --pad: 0mm; --gap: 0mm; }
+
+  @page { size: 30mm 40mm; margin: 0; }
+  html, body { width: 30mm; height: 40mm; margin: 0; padding: 0; overflow: hidden; }
+  body { background: #fff; }
+
+  .page-container.generar-qr-page { width: 30mm; height: 40mm; margin: 0; padding: 0; overflow: hidden; }
+
+  .generar-qr-page .only-print { width: var(--qr-label-width); height: var(--qr-label-height); display: flex; align-items: center; justify-content: center; overflow: hidden; position: fixed; left: 0; top: 0; }
+
+  .generar-qr-page .sticker { width: var(--qr-label-width); height: var(--qr-label-height); display: grid; grid-template-rows: var(--logo-box) var(--qr-box) var(--text-box) var(--footer-box); align-items: center; justify-items: center; padding: 0; box-sizing: border-box; overflow: hidden; page-break-inside: avoid; break-inside: avoid; page-break-after: avoid; break-after: avoid; }
+
+  .generar-qr-page .sticker-logo { width: 100%; height: var(--logo-box); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .generar-qr-page .sticker-logo img { height: calc(var(--logo-box) - 1mm); width: auto; max-width: 28mm; object-fit: contain; display: block; }
+  .generar-qr-page .sticker-qr { width: 100%; height: var(--qr-box); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .generar-qr-page .sticker-qr canvas { width: var(--qr-size) !important; height: var(--qr-size) !important; display: block; }
+
+  .generar-qr-page .sticker-text { width: 100%; height: var(--text-box); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: var(--gap); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Liberation Sans", sans-serif; color: #000; text-align: center; overflow: hidden; }
+
+  .generar-qr-page .sticker-big, .generar-qr-page .sticker-med, .generar-qr-page .sticker-small { width: calc(var(--qr-label-width) - 2mm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.0; }
+  .generar-qr-page .sticker-big { font-size: 9pt; font-weight: 900; letter-spacing: 0.2px; }
+  .generar-qr-page .sticker-med { font-size: 7pt; font-weight: 700; }
+  .generar-qr-page .sticker-small { font-size: 7pt; font-weight: 800; }
+
+  .generar-qr-page .sticker-footer { width: 100%; height: var(--footer-box); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .generar-qr-page .sticker-footer img { height: calc(var(--footer-box) - 1mm); width: auto; max-width: 28mm; object-fit: contain; display: block; }
+}
+
+.generar-qr-page .qr-list { display: grid; gap: 10px; margin-top: 10px; }
+.generar-qr-page .qr-list-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+.generar-qr-page .qr-list-text { min-width: 0; }
+.generar-qr-page .qr-list-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* Layout & card (match original project's look) */
+html, body { height: 100%; }
+body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", Arial, sans-serif; background: #f4f6f8; color: #12202b; }
+
+.page-container.generar-qr-page { display: flex; align-items: flex-start; justify-content: center; padding: 40px 20px; box-sizing: border-box; }
+
+.operacion-scope { width: 100%; max-width: 520px; }
+
+.form-card { background: #fff; border: 1px solid rgba(16,24,32,0.06); border-radius: 12px; padding: 22px; box-shadow: 0 8px 24px rgba(16,24,32,0.06); box-sizing: border-box; }
+
+.form-header { display: block; margin-bottom: 16px; padding: 18px; border-radius: 10px; color: #fff; text-align: center; }
+.form-header h2 { margin: 0 0 6px 0; font-size: 20px; letter-spacing: 0.6px; }
+.form-header p { margin: 0; font-size: 13px; opacity: 0.95; }
+
+/* gradient like original */
+.form-header { background: linear-gradient(90deg,#0b4f8a 0%, #4a9fd6 50%, #d6e6f4 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-grid-full { grid-column: 1 / -1; }
+
+.generar-qr-page .form-field { display: flex; flex-direction: column; }
+
+.form-label {
+  display: block;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1.2;
+  margin: 0 0 6px 0;
+  color: #0b2b3a;
+}
+.form-input { width: 100%; padding: 10px 12px; border: 1px solid rgba(16,24,32,0.08); border-radius: 8px; background: #fff; box-sizing: border-box; font-size: 14px; color: #0f1724; }
+.form-input::placeholder { color: #9aa4ad; }
+.form-input:focus { outline: none; border-color: #0b5ea8; box-shadow: 0 6px 18px rgba(11,94,168,0.08); }
+
+.generar-qr-page .ot-checkbox-group { margin-top: 2px; }
+.generar-qr-page .ot-checkbox-group label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0b2b3a;
+}
+.generar-qr-page .ot-checkbox-group input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+.form-warning { color: #b22222; padding: 8px; border-radius: 6px; }
+
+.form-button { display: inline-block; width: 100%; padding: 12px 18px; border-radius: 10px; background: linear-gradient(180deg,#0b5ea8 0%, #063a66 100%); color: #fff; font-weight: 700; border: none; cursor: pointer; box-shadow: 0 6px 18px rgba(11,94,168,0.12); }
+.form-button:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
+
+.actions-row { display:flex; gap:12px; align-items:center; justify-content:flex-start; }
+
+/* small utility button styles used in list */
+.btn { padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(16,24,32,0.06); background: #fff; cursor: pointer; }
+.btn-primary { background: linear-gradient(180deg,#0b5ea8,#0a4b82); color: #fff; border: none; font-weight: 700; }
+.btn-secondary { background: #f3f4f6; color: #0b2b3a; }
+
+/* Make the print sticker centred and scaled like screenshots */
+.generar-qr-page .only-print { display: none; align-items: center; justify-content: center; }
+
+@media (max-width: 520px) {
+  .form-card { padding: 16px; }
+  .form-grid { grid-template-columns: 1fr; }
+}

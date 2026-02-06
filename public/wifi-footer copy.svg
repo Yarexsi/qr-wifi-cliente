@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 384" role="img" aria-label="WiFi">
+  <g fill="none" stroke="#4b5563" stroke-width="48" stroke-linecap="butt" stroke-linejoin="round">
+    <path d="M64 128c106.5-106.5 277.5-106.5 384 0" />
+    <path d="M128 192c71-71 185-71 256 0" />
+    <path d="M192 256c35.5-35.5 92.5-35.5 128 0" />
+  </g>
+  <path d="M256 356c-28 0-50.7-22.7-50.7-50.7 0-18.2 9.7-34.1 24.1-42.8l26.6 26.6 26.6-26.6c14.4 8.7 24.1 24.6 24.1 42.8C306.7 333.3 284 356 256 356z" fill="#4b5563"/>
+</svg>

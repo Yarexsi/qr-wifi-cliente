@@ -1,0 +1,16 @@
+{
+  "name": "qr-only",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001"
+  },
+  "dependencies": {
+    "next": "^16.1.6",
+    "qrcode.react": "^4.2.0",
+    "react": "19.2.1",
+    "react-dom": "19.2.1"
+  }
+}
