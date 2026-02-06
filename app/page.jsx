@@ -19,6 +19,39 @@ const safeFilename = (value) => {
 // Output size for NIIMBOT B1 labels (50x30mm, horizontal). Aspect ratio must be 5:3.
 const LABEL_OUT_PX = { w: 1000, h: 600 };
 
+// NIIMBOT app may rotate the label “sheet” without rotating the imported image.
+// To keep the content aligned with the horizontal label, we render in portrait base
+// (same pixels swapped) and rotate the final bitmap 90° clockwise.
+const ROTATE_CONTENT_FOR_HORIZONTAL_LABEL = true;
+
+const rotateCanvas90CWTo = (srcCanvas, outW, outH) => {
+  const out = document.createElement("canvas");
+  out.width = outW;
+  out.height = outH;
+  const ctx = out.getContext("2d");
+  if (!ctx) return null;
+
+  // Map src (w x h) -> out (h x w) via 90° clockwise rotation.
+  ctx.translate(outW, 0);
+  ctx.rotate(Math.PI / 2);
+  ctx.drawImage(srcCanvas, 0, 0);
+  return out;
+};
+
+const makeStickerCanvas = () => {
+  if (!ROTATE_CONTENT_FOR_HORIZONTAL_LABEL) {
+    const c = document.createElement("canvas");
+    c.width = LABEL_OUT_PX.w;
+    c.height = LABEL_OUT_PX.h;
+    return { canvas: c, w: LABEL_OUT_PX.w, h: LABEL_OUT_PX.h };
+  }
+  // portrait base that rotates into 50x30 horizontal output
+  const c = document.createElement("canvas");
+  c.width = LABEL_OUT_PX.h;
+  c.height = LABEL_OUT_PX.w;
+  return { canvas: c, w: LABEL_OUT_PX.h, h: LABEL_OUT_PX.w };
+};
+
 const loadImage = (src) =>
   new Promise((resolve, reject) => {
     const img = new Image();
@@ -118,11 +151,8 @@ export default function Page() {
   };
 
   const buildWifiStickerPng = async (item, qrDataUrl) => {
-    const labelW = LABEL_OUT_PX.w;
-    const labelH = LABEL_OUT_PX.h;
-    const canvas = document.createElement("canvas");
-    canvas.width = labelW;
-    canvas.height = labelH;
+    // Render on a base canvas; rotate to final 50x30 horizontal if needed.
+    const { canvas, w: labelW, h: labelH } = makeStickerCanvas();
     const padX = 55;
     const padTop = 55;
     const padBottom = 55;
@@ -292,7 +322,9 @@ export default function Page() {
     ctx.drawImage(wifiImg, Math.round(centerX - wifiW / 2), footerY, wifiW, wifiH);
     ctx.globalAlpha = 1;
 
-    return canvas.toDataURL("image/png");
+    if (!ROTATE_CONTENT_FOR_HORIZONTAL_LABEL) return canvas.toDataURL("image/png");
+    const out = rotateCanvas90CWTo(canvas, LABEL_OUT_PX.w, LABEL_OUT_PX.h);
+    return (out || canvas).toDataURL("image/png");
   };
 
   const buildAttentionStickerPng = async () => {
@@ -302,7 +334,8 @@ export default function Page() {
     const padY = 40;
     const gap = 18;
     const attentionBandW = 260;
-    const contactLabel = "Contáctanos";
+    const contactLine1 = "Llámanos:";
+    const contactLine2 = "(664) 954 6020";
 
     const canvas = document.createElement("canvas");
     canvas.width = labelW;
@@ -385,12 +418,13 @@ export default function Page() {
 
     x += qrSize + gap;
 
-    // 3) Contáctanos (vertical)
-    drawVerticalSingle({
+    // 3) Llámanos (vertical)
+    drawVerticalTwoLine({
       bandCenterX: x + contactBandW / 2,
       bandCenterY: labelH / 2,
       maxLen: innerH,
-      text: contactLabel,
+      t1: contactLine1,
+      t2: contactLine2,
     });
 
     return canvas.toDataURL("image/png");
