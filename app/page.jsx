@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 
 const sanitizeNumericDot = (value) => {
@@ -20,37 +20,42 @@ const safeFilename = (value) => {
   return base.replace(/[^a-z0-9-_]/gi, "_");
 };
 
-const waitForAllImages = (doc, timeoutMs = 800) => {
-  try {
-    const images = Array.from(doc.images || []);
-    if (!images.length) return Promise.resolve();
+// Output size for NIIMBOT B1 labels (50x30mm, horizontal). Aspect ratio must be 5:3.
+// Using 1000x600 yields good sharpness while keeping files manageable.
+const LABEL_OUT_PX = { w: 1000, h: 600 };
 
-    const done = () => images.every((img) => img.complete);
-    if (done()) return Promise.resolve();
+const loadImage = (src) =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`No se pudo cargar la imagen: ${src}`));
+    img.src = src;
+  });
 
-    return new Promise((resolve) => {
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        resolve();
-      };
-      const t = setTimeout(finish, timeoutMs);
+const setFont = (ctx, { weight = 700, sizePx = 48 } = {}) => {
+  ctx.font = `${weight} ${sizePx}px Arial, Helvetica, sans-serif`;
+};
 
-      images.forEach((img) => {
-        const handler = () => {
-          if (done()) {
-            clearTimeout(t);
-            finish();
-          }
-        };
-        img.addEventListener("load", handler, { once: true });
-        img.addEventListener("error", handler, { once: true });
-      });
-    });
-  } catch {
-    return Promise.resolve();
+const fitTextSize = (ctx, { text, maxWidth, weight = 800, startPx, minPx }) => {
+  let sizePx = startPx;
+  while (sizePx > minPx) {
+    setFont(ctx, { weight, sizePx });
+    if (ctx.measureText(text).width <= maxWidth) return sizePx;
+    sizePx -= 2;
   }
+  return minPx;
+};
+
+const drawCenteredText = (ctx, { text, centerX, y, maxWidth, weight, startPx, minPx }) => {
+  const sizePx = fitTextSize(ctx, { text, maxWidth, weight, startPx, minPx });
+  setFont(ctx, { weight, sizePx });
+  ctx.textAlign = "center";
+  // Use top baseline so vertical layout is predictable
+  ctx.textBaseline = "top";
+  ctx.fillText(text, centerX, y);
+  return sizePx;
 };
 
 export default function Page() {
@@ -118,230 +123,325 @@ export default function Page() {
     }
   };
 
-  const printStickerHtml = async ({ qrDataUrl, passText, ssidText, netText }) => {
-    const w = window.open("", "_blank");
+  const buildWifiStickerPng = async (item, qrDataUrl) => {
+    // High-res canvas for crisp printing/saving
+    const labelW = LABEL_OUT_PX.w;
+    const labelH = LABEL_OUT_PX.h;
+    const padX = 50;
+    const padTop = 34;
+    const padBottom = 34;
+    const centerX = labelW / 2;
+    const maxTextW = labelW - padX * 2;
 
-    const logo = "/logo-red7-dark.png";
-    const wifiIcon = "/wifi-footer.svg";
+    const canvas = document.createElement("canvas");
+    canvas.width = labelW;
+    canvas.height = labelH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
 
-    const html = `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Etiqueta</title>
-    <style>
-      @page { size: 30mm 40mm; margin: 0; }
-      html, body { width: 30mm; height: 40mm; margin: 0; padding: 0; overflow: hidden; }
-      body { background: #fff; font-family: Arial, Helvetica, sans-serif; color: #000; }
-      .sticker {
-        width: 30mm;
-        height: 40mm;
-        box-sizing: border-box;
-        padding: 1mm 1mm 0.8mm;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: flex-start;
-        text-align: center;
-      }
-      .logo {
-        width: 24mm;
-        height: auto;
-        margin: 0.8mm 0 0.8mm;
-      }
-      .qr {
-        width: 26mm;
-        height: 26mm;
-        object-fit: contain;
-        margin: 0 0 1mm;
-      }
-      .pass {
-        font-weight: 900;
-        font-size: 5.2mm;
-        line-height: 1.0;
-        margin: 0 0 0.6mm;
-        width: 28mm;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .ssid {
-        font-weight: 800;
-        font-size: 3.6mm;
-        line-height: 1.0;
-        margin: 0 0 0.4mm;
-        width: 28mm;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .net {
-        font-weight: 900;
-        font-size: 5.0mm;
-        line-height: 1.0;
-        margin: 0;
-      }
-      .spacer { flex: 1; }
-      .wifi {
-        width: 7mm;
-        height: auto;
-        margin: 0.6mm 0 0;
-        opacity: 0.75;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="sticker">
-      <img class="logo" src="${logo}" alt="" />
-      <img class="qr" src="${qrDataUrl}" alt="QR" />
-      <div class="pass">${passText}</div>
-      <div class="ssid">${ssidText}</div>
-      <div class="net">${netText}</div>
-      <div class="spacer"></div>
-      <img class="wifi" src="${wifiIcon}" alt="" />
-    </div>
-    <script>
-      (function(){
-        function allDone(){
-          var imgs = Array.prototype.slice.call(document.images || []);
-          return imgs.every(function(img){ return img.complete; });
-        }
-        function go(){
-          try { window.focus(); } catch(e) {}
-          setTimeout(function(){
-            try { window.print(); } catch(e) {}
-            setTimeout(function(){ try { window.close(); } catch(e) {} }, 250);
-          }, 60);
-        }
-        if (allDone()) return go();
-        window.addEventListener('load', function(){ setTimeout(go, 30); }, { once: true });
-        setTimeout(go, 700);
-      })();
-    </script>
-  </body>
-</html>`;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, labelW, labelH);
+    ctx.fillStyle = "#000000";
 
-    if (w) {
-      w.document.open();
-      w.document.write(html);
-      w.document.close();
-      try {
-        await waitForAllImages(w.document);
-      } catch {
-        // ignore
+    const [logoImg, wifiImg, qrImg] = await Promise.all([
+      loadImage("/logo-red7-dark.png"),
+      loadImage("/wifi-footer%20copy.svg"),
+      loadImage(qrDataUrl),
+    ]);
+
+    // Pre-calc sizes
+    const wifiTargetH = 40;
+    const wifiScale = wifiTargetH / wifiImg.height;
+    const wifiW = Math.round(wifiImg.width * wifiScale);
+    const wifiH = Math.round(wifiImg.height * wifiScale);
+
+    const logoMaxW = labelW - padX * 2;
+    const logoTargetH = 58;
+    const logoScale = Math.min(logoMaxW / logoImg.width, logoTargetH / logoImg.height);
+    const logoW = Math.round(logoImg.width * logoScale);
+    const logoH = Math.round(logoImg.height * logoScale);
+
+    // Fit/pack everything vertically so footer always stays below text
+    let qrSize = 360;
+    let passStartPx = 74;
+    let ssidStartPx = 46;
+    let netStartPx = 64;
+
+    const passText = item?.isOpen ? "OPEN" : String(item?.password || "");
+    const ssidText = String(item?.ssid || "");
+    const netText = String(item?.networkType || "");
+
+    const gapLogoQr = 14;
+    // keep QR and text close (user wants texts together)
+    let gapQrText = 26;
+    const gapPassSsid = 4;
+    const gapSsidNet = 2;
+    const gapNetFooter = 10;
+
+    const availH = labelH - padTop - padBottom;
+    const footerTop = labelH - padBottom - wifiH;
+
+    for (let i = 0; i < 18; i += 1) {
+      // Determine fitted font sizes at current start sizes
+      const passPx = fitTextSize(ctx, {
+        text: passText,
+        maxWidth: maxTextW,
+        weight: 900,
+        startPx: passStartPx,
+        minPx: 34,
+      });
+      const ssidPx = fitTextSize(ctx, {
+        text: ssidText,
+        maxWidth: maxTextW,
+        weight: 800,
+        startPx: ssidStartPx,
+        minPx: 24,
+      });
+      const netPx = fitTextSize(ctx, {
+        text: netText,
+        maxWidth: maxTextW,
+        weight: 900,
+        startPx: netStartPx,
+        minPx: 28,
+      });
+
+      // Text block anchored above footer
+      const netTop = footerTop - gapNetFooter - netPx;
+      const ssidTop = netTop - gapSsidNet - ssidPx;
+      const passTop = ssidTop - gapPassSsid - passPx;
+
+      // QR anchored below logo
+      const qrTop = padTop + logoH + gapLogoQr;
+
+      const fits =
+        passTop >= qrTop + qrSize + gapQrText &&
+        // also ensure top padding isn't exceeded
+        qrTop + qrSize <= footerTop - gapNetFooter - (passPx + ssidPx + netPx + gapPassSsid + gapSsidNet);
+
+      const required =
+        (qrTop - padTop) +
+        qrSize +
+        gapQrText +
+        (footerTop - passTop) +
+        wifiH;
+
+      if (fits && required <= availH) break;
+
+      // First reduce QR size, then reduce gap between QR and text, then shrink fonts.
+      if (qrSize > 310) {
+        qrSize -= 12;
+        continue;
       }
-      return;
+      if (gapQrText > 26) {
+        gapQrText -= 4;
+        continue;
+      }
+      passStartPx = Math.max(52, passStartPx - 4);
+      ssidStartPx = Math.max(34, ssidStartPx - 3);
+      netStartPx = Math.max(44, netStartPx - 3);
     }
 
-    // popup blocked: print via hidden iframe
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "absolute";
-    iframe.style.left = "-9999px";
-    iframe.style.top = "0";
-    document.body.appendChild(iframe);
-    const idoc = iframe.contentWindow.document;
-    idoc.open();
-    idoc.write(html);
-    idoc.close();
+    // Logo (top)
+    let y = padTop;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(logoImg, Math.round(centerX - logoW / 2), y, logoW, logoH);
+    y += logoH + gapLogoQr;
 
-    await waitForAllImages(idoc);
-    try {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-    } catch {
-      // ignore
-    }
-    setTimeout(() => {
-      try {
-        document.body.removeChild(iframe);
-      } catch {
-        // ignore
-      }
-    }, 800);
+    // QR (big)
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(qrImg, Math.round(centerX - qrSize / 2), y, qrSize, qrSize);
+    // Lay out texts from bottom to top so footer never overlaps.
+    const footerY = labelH - padBottom - wifiH;
+
+    const netPx = fitTextSize(ctx, {
+      text: netText,
+      maxWidth: maxTextW,
+      weight: 900,
+      startPx: netStartPx,
+      minPx: 28,
+    });
+    const ssidPx = fitTextSize(ctx, {
+      text: ssidText,
+      maxWidth: maxTextW,
+      weight: 800,
+      startPx: ssidStartPx,
+      minPx: 24,
+    });
+    const passPx = fitTextSize(ctx, {
+      text: passText,
+      maxWidth: maxTextW,
+      weight: 900,
+      startPx: passStartPx,
+      minPx: 34,
+    });
+
+    const netTop = footerY - gapNetFooter - netPx;
+    const ssidTop = netTop - gapSsidNet - ssidPx;
+    const passTop = ssidTop - gapPassSsid - passPx;
+
+    // If text block would collide with QR, pull it up a bit by reducing gap.
+    // (Packing loop should prevent this, but keep a safe guard.)
+    const minTextTop = y + qrSize + gapQrText;
+    const shiftUp = Math.max(0, minTextTop - passTop);
+
+    drawCenteredText(ctx, {
+      text: passText,
+      centerX,
+      y: passTop + shiftUp,
+      maxWidth: maxTextW,
+      weight: 900,
+      startPx: passStartPx,
+      minPx: 34,
+    });
+    drawCenteredText(ctx, {
+      text: ssidText,
+      centerX,
+      y: ssidTop + shiftUp,
+      maxWidth: maxTextW,
+      weight: 800,
+      startPx: ssidStartPx,
+      minPx: 24,
+    });
+    drawCenteredText(ctx, {
+      text: netText,
+      centerX,
+      y: netTop + shiftUp,
+      maxWidth: maxTextW,
+      weight: 900,
+      startPx: netStartPx,
+      minPx: 28,
+    });
+
+    // WiFi footer icon BELOW the text (never above it)
+    ctx.globalAlpha = 0.75;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(wifiImg, Math.round(centerX - wifiW / 2), footerY, wifiW, wifiH);
+    ctx.globalAlpha = 1;
+
+    return canvas.toDataURL("image/png");
   };
 
-  const handlePrintOne = (index) => {
-    setPrintIndex(index);
-    setTimeout(async () => {
-      const qrDataUrl = capturePrintCanvasPng();
-      const item = qrs[index] || null;
-      const passText = item ? (item.isOpen ? "OPEN" : String(item.password || "")) : "";
-      const ssidText = item ? String(item.ssid || "") : "";
-      const netText = item ? String(item.networkType || "") : "";
+  const buildAttentionStickerPng = async () => {
+    const labelW = LABEL_OUT_PX.w;
+    const labelH = LABEL_OUT_PX.h;
+    const padX = 50;
+    const padTop = 42;
+    const centerX = labelW / 2;
+    const maxTextW = labelW - padX * 2;
 
-      if (!qrDataUrl) {
-        setTimeout(() => window.print(), 120);
-        return;
-      }
-      await printStickerHtml({ qrDataUrl, passText, ssidText, netText });
-    }, 160);
+    const canvas = document.createElement("canvas");
+    canvas.width = labelW;
+    canvas.height = labelH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, labelW, labelH);
+    ctx.fillStyle = "#000000";
+
+    const qrImg = await loadImage("/Red7QR.png");
+
+    // Header text (two lines for better balance)
+    let y = padTop;
+    const line1 = "¡Atención al cliente";
+    const line2 = "por WhatsApp!";
+
+    const line1Px = drawCenteredText(ctx, {
+      text: line1,
+      centerX,
+      y,
+      maxWidth: maxTextW,
+      weight: 900,
+      startPx: 44,
+      minPx: 28,
+    });
+    y += line1Px + 10;
+
+    const line2Px = drawCenteredText(ctx, {
+      text: line2,
+      centerX,
+      y,
+      maxWidth: maxTextW,
+      weight: 900,
+      startPx: 44,
+      minPx: 28,
+    });
+    y += line2Px + 18;
+
+    // QR image (square, centered)
+    const qrMaxSize = 460;
+    const availH = labelH - y - 34;
+    const target = Math.max(260, Math.min(qrMaxSize, Math.min(labelW - padX * 2, availH)));
+    const scale = Math.min(target / qrImg.width, target / qrImg.height);
+    const qrW = Math.round(qrImg.width * scale);
+    const qrH = Math.round(qrImg.height * scale);
+    const qrX = Math.round(centerX - qrW / 2);
+    const qrY = Math.round(y);
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(qrImg, qrX, qrY, qrW, qrH);
+
+    return canvas.toDataURL("image/png");
   };
 
   const handleDownload = (index) => {
     setPrintIndex(index);
     setTimeout(() => {
-      const data = capturePrintCanvasPng();
-      if (!data) return;
-      const a = document.createElement("a");
-      a.href = data;
-      a.download = `${safeFilename(qrs[index]?.ssid)}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      (async () => {
+        const qrDataUrl = capturePrintCanvasPng();
+        const item = qrs[index] || null;
+        if (!qrDataUrl || !item) {
+          setPrintIndex(null);
+          return;
+        }
+
+        let sticker = null;
+        try {
+          sticker = await buildWifiStickerPng(item, qrDataUrl);
+        } catch {
+          sticker = null;
+        }
+
+        if (!sticker) {
+          // fallback: download only QR
+          const a = document.createElement("a");
+          a.href = qrDataUrl;
+          a.download = `${safeFilename(item.ssid)}.png`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setPrintIndex(null);
+          return;
+        }
+
+        const a = document.createElement("a");
+        a.href = sticker;
+        a.download = `${safeFilename(item.ssid)}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setPrintIndex(null);
+      })();
     }, 160);
   };
 
   const handlePrintRedQr = () => {
-    const src = "/redqr.png";
-    const img = new Image();
-    img.onload = () => {
-      const w = window.open("", "_blank");
-      const html = `<!doctype html><html><head><meta charset="utf-8"><title>QR</title>
-        <style>@page{size:50mm 30mm;margin:0}html,body{height:30mm;width:50mm;margin:0;padding:0;overflow:hidden}
-        img{display:block;margin:0;width:50mm;height:30mm;object-fit:cover}
-        </style></head><body>
-        <img src="${src}" onload="setTimeout(function(){window.print();window.close();},160)" />
-        </body></html>`;
-      if (w) {
-        w.document.open();
-        w.document.write(html);
-        w.document.close();
-        return;
-      }
+    (async () => {
+      let sticker = null;
       try {
-        const iframe = document.createElement("iframe");
-        iframe.style.position = "absolute";
-        iframe.style.left = "-9999px";
-        iframe.style.top = "0";
-        document.body.appendChild(iframe);
-        const idoc = iframe.contentWindow.document;
-        idoc.open();
-        idoc.write(html);
-        idoc.close();
-        iframe.contentWindow.focus();
-        setTimeout(() => {
-          try {
-            iframe.contentWindow.print();
-          } catch {}
-          setTimeout(() => {
-            try {
-              document.body.removeChild(iframe);
-            } catch {}
-          }, 500);
-        }, 200);
+        sticker = await buildAttentionStickerPng();
       } catch {
-        setTimeout(() => window.print(), 120);
+        sticker = null;
       }
-    };
-    img.src = src;
-  };
 
-  useEffect(() => {
-    const onAfterPrint = () => setPrintIndex(null);
-    window.addEventListener("afterprint", onAfterPrint);
-    return () => window.removeEventListener("afterprint", onAfterPrint);
-  }, []);
+      const a = document.createElement("a");
+      a.href = sticker || "/Red7QR.png";
+      a.download = "atencion-whatsapp.png";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    })();
+  };
 
   return (
     <div className="page-container generar-qr-page">
@@ -428,20 +528,10 @@ export default function Page() {
             </div>
 
             <div className="actions-row form-grid-full">
-              {qrs.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => handlePrintOne(qrs.length - 1)}
-                  className="btn btn-primary"
-                >
-                  Imprimir última
-                </button>
-              )}
               <button
                 type="button"
                 onClick={handlePrintRedQr}
                 className="btn btn-primary"
-                style={{ marginLeft: 8 }}
               >
                 QR de atención al cliente
               </button>
@@ -471,10 +561,7 @@ export default function Page() {
                       </div>
                     </div>
                     <div className="qr-list-actions">
-                      <button type="button" className="btn btn-primary" onClick={() => handlePrintOne(i)}>
-                        Imprimir
-                      </button>
-                      <button type="button" className="btn btn-secondary" onClick={() => handleDownload(i)} style={{ marginLeft: 8 }}>
+                      <button type="button" className="btn btn-primary" onClick={() => handleDownload(i)}>
                         Descargar
                       </button>
                       <button
