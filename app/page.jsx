@@ -6,14 +6,10 @@ import { QRCodeCanvas } from "qrcode.react";
 const sanitizeNumericDot = (value) => {
   const raw = String(value ?? "");
   const cleaned = raw.replace(/[^0-9.]/g, "");
-  // allow a single dot
   return cleaned.replace(/(\..*)\./g, "$1");
 };
 
-const escapeWifi = (value) => {
-  // Escape characters required by WIFI QR payload format
-  return String(value ?? "").replace(/[\\;,:\"]/g, (m) => `\\${m}`);
-};
+const escapeWifi = (value) => String(value ?? "").replace(/[\\;,:\"]/g, (m) => `\\${m}`);
 
 const safeFilename = (value) => {
   const base = String(value ?? "").trim() || "qr";
@@ -21,41 +17,7 @@ const safeFilename = (value) => {
 };
 
 // Output size for NIIMBOT B1 labels (50x30mm, horizontal). Aspect ratio must be 5:3.
-// Using 1000x600 yields good sharpness while keeping files manageable.
 const LABEL_OUT_PX = { w: 1000, h: 600 };
-
-// NIIMBOT app may rotate the label “sheet” without rotating the imported image.
-// To keep the content aligned with the horizontal label, we render in portrait base
-// (same pixels swapped) and rotate the final bitmap 90° clockwise.
-const ROTATE_CONTENT_FOR_HORIZONTAL_LABEL = true;
-
-const rotateCanvas90CWTo = (srcCanvas, outW, outH) => {
-  const out = document.createElement("canvas");
-  out.width = outW;
-  out.height = outH;
-  const ctx = out.getContext("2d");
-  if (!ctx) return null;
-
-  // Map src (w x h) -> out (h x w) via 90° clockwise rotation.
-  ctx.translate(outW, 0);
-  ctx.rotate(Math.PI / 2);
-  ctx.drawImage(srcCanvas, 0, 0);
-  return out;
-};
-
-const makeStickerCanvas = () => {
-  if (!ROTATE_CONTENT_FOR_HORIZONTAL_LABEL) {
-    const c = document.createElement("canvas");
-    c.width = LABEL_OUT_PX.w;
-    c.height = LABEL_OUT_PX.h;
-    return { canvas: c, w: LABEL_OUT_PX.w, h: LABEL_OUT_PX.h };
-  }
-  // portrait base that rotates into 50x30 horizontal output
-  const c = document.createElement("canvas");
-  c.width = LABEL_OUT_PX.h;
-  c.height = LABEL_OUT_PX.w;
-  return { canvas: c, w: LABEL_OUT_PX.h, h: LABEL_OUT_PX.w };
-};
 
 const loadImage = (src) =>
   new Promise((resolve, reject) => {
@@ -85,7 +47,6 @@ const drawCenteredText = (ctx, { text, centerX, y, maxWidth, weight, startPx, mi
   const sizePx = fitTextSize(ctx, { text, maxWidth, weight, startPx, minPx });
   setFont(ctx, { weight, sizePx });
   ctx.textAlign = "center";
-  // Use top baseline so vertical layout is predictable
   ctx.textBaseline = "top";
   ctx.fillText(text, centerX, y);
   return sizePx;
@@ -157,8 +118,11 @@ export default function Page() {
   };
 
   const buildWifiStickerPng = async (item, qrDataUrl) => {
-    // Render on a base canvas; rotate to final 50x30 horizontal if needed.
-    const { canvas, w: labelW, h: labelH } = makeStickerCanvas();
+    const labelW = LABEL_OUT_PX.w;
+    const labelH = LABEL_OUT_PX.h;
+    const canvas = document.createElement("canvas");
+    canvas.width = labelW;
+    canvas.height = labelH;
     const padX = 55;
     const padTop = 55;
     const padBottom = 55;
@@ -177,7 +141,6 @@ export default function Page() {
       loadImage(qrDataUrl),
     ]);
 
-    // Pre-calc sizes
     const wifiTargetH = 56;
     const wifiScale = wifiTargetH / wifiImg.height;
     const wifiW = Math.round(wifiImg.width * wifiScale);
@@ -189,7 +152,6 @@ export default function Page() {
     const logoW = Math.round(logoImg.width * logoScale);
     const logoH = Math.round(logoImg.height * logoScale);
 
-    // Fit/pack everything vertically so footer always stays below text
     let qrSize = 440;
     let passStartPx = 88;
     let ssidStartPx = 56;
@@ -200,7 +162,6 @@ export default function Page() {
     const netText = String(item?.networkType || "");
 
     const gapLogoQr = 22;
-    // text block spacing (tight but readable)
     let gapQrText = 38;
     const gapPassSsid = 6;
     const gapSsidNet = 4;
@@ -210,7 +171,6 @@ export default function Page() {
     const footerTop = labelH - padBottom - wifiH;
 
     for (let i = 0; i < 18; i += 1) {
-      // Determine fitted font sizes at current start sizes
       const passPx = fitTextSize(ctx, {
         text: passText,
         maxWidth: maxTextW,
@@ -233,29 +193,20 @@ export default function Page() {
         minPx: 34,
       });
 
-      // Text block anchored above footer
       const netTop = footerTop - gapNetFooter - netPx;
       const ssidTop = netTop - gapSsidNet - ssidPx;
       const passTop = ssidTop - gapPassSsid - passPx;
 
-      // QR anchored below logo
       const qrTop = padTop + logoH + gapLogoQr;
 
       const fits =
         passTop >= qrTop + qrSize + gapQrText &&
-        // also ensure top padding isn't exceeded
         qrTop + qrSize <= footerTop - gapNetFooter - (passPx + ssidPx + netPx + gapPassSsid + gapSsidNet);
 
-      const required =
-        (qrTop - padTop) +
-        qrSize +
-        gapQrText +
-        (footerTop - passTop) +
-        wifiH;
+      const required = (qrTop - padTop) + qrSize + gapQrText + (footerTop - passTop) + wifiH;
 
       if (fits && required <= availH) break;
 
-      // First reduce QR size, then reduce gap between QR and text, then shrink fonts.
       if (qrSize > 360) {
         qrSize -= 12;
         continue;
@@ -269,16 +220,14 @@ export default function Page() {
       netStartPx = Math.max(52, netStartPx - 3);
     }
 
-    // Logo (top)
     let y = padTop;
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(logoImg, Math.round(centerX - logoW / 2), y, logoW, logoH);
     y += logoH + gapLogoQr;
 
-    // QR (big)
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(qrImg, Math.round(centerX - qrSize / 2), y, qrSize, qrSize);
-    // Lay out texts from bottom to top so footer never overlaps.
+
     const footerY = labelH - padBottom - wifiH;
 
     const netPx = fitTextSize(ctx, {
@@ -307,8 +256,6 @@ export default function Page() {
     const ssidTop = netTop - gapSsidNet - ssidPx;
     const passTop = ssidTop - gapPassSsid - passPx;
 
-    // If text block would collide with QR, pull it up a bit by reducing gap.
-    // (Packing loop should prevent this, but keep a safe guard.)
     const minTextTop = y + qrSize + gapQrText;
     const shiftUp = Math.max(0, minTextTop - passTop);
 
@@ -340,23 +287,26 @@ export default function Page() {
       minPx: 34,
     });
 
-    // WiFi footer icon BELOW the text (never above it)
     ctx.globalAlpha = 0.75;
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(wifiImg, Math.round(centerX - wifiW / 2), footerY, wifiW, wifiH);
     ctx.globalAlpha = 1;
 
-    if (!ROTATE_CONTENT_FOR_HORIZONTAL_LABEL) return canvas.toDataURL("image/png");
-    const out = rotateCanvas90CWTo(canvas, LABEL_OUT_PX.w, LABEL_OUT_PX.h);
-    return (out || canvas).toDataURL("image/png");
+    return canvas.toDataURL("image/png");
   };
 
   const buildAttentionStickerPng = async () => {
-    const { canvas, w: labelW, h: labelH } = makeStickerCanvas();
-    const padX = 55;
-    const padTop = 65;
-    const centerX = labelW / 2;
-    const maxTextW = labelW - padX * 2;
+    const labelW = LABEL_OUT_PX.w;
+    const labelH = LABEL_OUT_PX.h;
+    const padX = 30;
+    const padY = 40;
+    const gap = 18;
+    const attentionBandW = 260;
+    const contactLabel = "Contáctanos";
+
+    const canvas = document.createElement("canvas");
+    canvas.width = labelW;
+    canvas.height = labelH;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
@@ -366,93 +316,116 @@ export default function Page() {
 
     const qrImg = await loadImage("/Red7QR.png");
 
-    // Header text (two lines for better balance)
-    let y = padTop;
     const line1 = "¡Atención al cliente";
     const line2 = "por WhatsApp!";
 
-    const line1Px = drawCenteredText(ctx, {
-      text: line1,
-      centerX,
-      y,
-      maxWidth: maxTextW,
-      weight: 900,
-      startPx: 54,
-      minPx: 34,
+    const innerH = labelH - padY * 2;
+    const qrSize = innerH;
+    const contactBandW = Math.max(120, labelW - padX * 2 - attentionBandW - qrSize - gap * 2);
+
+    const drawVerticalTwoLine = ({ bandCenterX, bandCenterY, maxLen, t1, t2 }) => {
+      const t1Px = fitTextSize(ctx, { text: t1, maxWidth: maxLen, weight: 900, startPx: 72, minPx: 42 });
+      const t2Px = fitTextSize(ctx, { text: t2, maxWidth: maxLen, weight: 900, startPx: 72, minPx: 42 });
+      const lineGap = 18;
+      const total = t1Px + lineGap + t2Px;
+
+      ctx.save();
+      ctx.translate(Math.round(bandCenterX), Math.round(bandCenterY));
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillStyle = "#000000";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      setFont(ctx, { weight: 900, sizePx: t1Px });
+      ctx.fillText(t1, 0, -total / 2 + t1Px / 2);
+      setFont(ctx, { weight: 900, sizePx: t2Px });
+      ctx.fillText(t2, 0, total / 2 - t2Px / 2);
+      ctx.restore();
+    };
+
+    const drawVerticalSingle = ({ bandCenterX, bandCenterY, maxLen, text }) => {
+      const px = fitTextSize(ctx, { text, maxWidth: maxLen, weight: 900, startPx: 62, minPx: 34 });
+      ctx.save();
+      ctx.translate(Math.round(bandCenterX), Math.round(bandCenterY));
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillStyle = "#000000";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      setFont(ctx, { weight: 900, sizePx: px });
+      ctx.fillText(text, 0, 0);
+      ctx.restore();
+    };
+
+    let x = padX;
+
+    // 1) Atención (vertical)
+    drawVerticalTwoLine({
+      bandCenterX: x + attentionBandW / 2,
+      bandCenterY: labelH / 2,
+      maxLen: innerH,
+      t1: line1,
+      t2: line2,
     });
-    y += line1Px + 10;
+    x += attentionBandW + gap;
 
-    const line2Px = drawCenteredText(ctx, {
-      text: line2,
-      centerX,
-      y,
-      maxWidth: maxTextW,
-      weight: 900,
-      startPx: 54,
-      minPx: 34,
-    });
-    y += line2Px + 26;
+    // 2) QR rotated -90° (same orientation as the vertical text)
+    const qrX = x;
+    const qrY = padY;
+    const qrCX = qrX + qrSize / 2;
+    const qrCY = qrY + qrSize / 2;
+    const scale = Math.min(qrSize / qrImg.width, qrSize / qrImg.height);
+    const drawW = Math.round(qrImg.width * scale);
+    const drawH = Math.round(qrImg.height * scale);
 
-    // QR image (square, centered)
-    const qrMaxSize = 520;
-    const availH = labelH - y - 55;
-    const target = Math.max(260, Math.min(qrMaxSize, Math.min(labelW - padX * 2, availH)));
-    const scale = Math.min(target / qrImg.width, target / qrImg.height);
-    const qrW = Math.round(qrImg.width * scale);
-    const qrH = Math.round(qrImg.height * scale);
-    const qrX = Math.round(centerX - qrW / 2);
-    const qrY = Math.round(y);
-
+    ctx.save();
+    ctx.translate(Math.round(qrCX), Math.round(qrCY));
+    ctx.rotate(-Math.PI / 2);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(qrImg, qrX, qrY, qrW, qrH);
+    ctx.drawImage(qrImg, Math.round(-drawW / 2), Math.round(-drawH / 2), drawW, drawH);
+    ctx.restore();
 
-    if (!ROTATE_CONTENT_FOR_HORIZONTAL_LABEL) return canvas.toDataURL("image/png");
-    const out = rotateCanvas90CWTo(canvas, LABEL_OUT_PX.w, LABEL_OUT_PX.h);
-    return (out || canvas).toDataURL("image/png");
+    x += qrSize + gap;
+
+    // 3) Contáctanos (vertical)
+    drawVerticalSingle({
+      bandCenterX: x + contactBandW / 2,
+      bandCenterY: labelH / 2,
+      maxLen: innerH,
+      text: contactLabel,
+    });
+
+    return canvas.toDataURL("image/png");
   };
 
   const handleDownload = (index) => {
     setPrintIndex(index);
     setTimeout(() => {
       (async () => {
-        const qrDataUrl = capturePrintCanvasPng();
-        const item = qrs[index] || null;
-        if (!qrDataUrl || !item) {
-          setPrintIndex(null);
-          return;
-        }
-
-        let sticker = null;
         try {
-          sticker = await buildWifiStickerPng(item, qrDataUrl);
-        } catch {
-          sticker = null;
-        }
+          const qrDataUrl = capturePrintCanvasPng();
+          const item = qrs[index] || null;
+          if (!qrDataUrl || !item) return;
 
-        if (!sticker) {
-          // fallback: download only QR
+          let sticker = null;
+          try {
+            sticker = await buildWifiStickerPng(item, qrDataUrl);
+          } catch {
+            sticker = null;
+          }
+
           const a = document.createElement("a");
-          a.href = qrDataUrl;
+          a.href = sticker || qrDataUrl;
           a.download = `${safeFilename(item.ssid)}.png`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
+        } finally {
           setPrintIndex(null);
-          return;
         }
-
-        const a = document.createElement("a");
-        a.href = sticker;
-        a.download = `${safeFilename(item.ssid)}.png`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setPrintIndex(null);
       })();
     }, 160);
   };
 
-  const handlePrintRedQr = () => {
+  const handleDownloadAttention = () => {
     (async () => {
       let sticker = null;
       try {
@@ -472,71 +445,62 @@ export default function Page() {
 
   return (
     <div className="page-container generar-qr-page">
-      <div className="operacion-scope no-print">
+      <div className="operacion-scope">
         <section className="form-card">
-          <div className="form-header no-print">
-            <h2>GENERADOR DE QR WIFI</h2>
-            <p>Genera e imprime etiquetas (una por una).</p>
+          <div className="form-header">
+            <h2>Generador de QR WiFi</h2>
+            <p>Descarga la etiqueta lista para NIIMBOT (50×30mm)</p>
           </div>
 
-          <div className="no-print form-grid">
+          <div className="form-grid">
             <div className="form-field">
-              <label className="form-label">Nombre de la Red (SSID)</label>
+              <label className="form-label" htmlFor="ssid">
+                SSID
+              </label>
               <input
-                type="text"
+                id="ssid"
                 className="form-input"
-                placeholder="Red_Cliente_23"
                 value={ssid}
-                onChange={(e) => {
-                  setSsid(e.target.value);
-                  setError("");
-                }}
+                onChange={(e) => setSsid(e.target.value)}
+                placeholder="Nombre de la red"
               />
             </div>
 
             <div className="form-field">
-              <label className="form-label">Tipo de red</label>
-              <input
-                type="text"
+              <label className="form-label" htmlFor="networkType">
+                Tipo de red
+              </label>
+              <select
+                id="networkType"
                 className="form-input"
                 value={networkType}
-                inputMode="decimal"
-                pattern="^[0-9]*\\.?[0-9]*$"
-                placeholder="5.0"
-                onChange={(e) => {
-                  setNetworkType(sanitizeNumericDot(e.target.value));
-                  setError("");
-                }}
+                onChange={(e) => setNetworkType(e.target.value)}
+              >
+                <option value="2.4">2.4</option>
+                <option value="5.0">5.0</option>
+              </select>
+            </div>
+
+            <div className="form-field form-grid-full">
+              <label className="form-label" htmlFor="password">
+                Contraseña
+              </label>
+              <input
+                id="password"
+                className="form-input"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={isOpen ? "Sin contraseña" : "Contraseña"}
+                disabled={isOpen}
               />
             </div>
 
-            {!isOpen ? (
-              <div className="form-field">
-                <label className="form-label">Contraseña</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="Contraseña del WiFi"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setError("");
-                  }}
-                />
-              </div>
-            ) : (
-              <div className="form-field" />
-            )}
-
-            <div className="ot-checkbox-group form-grid-full">
+            <div className="form-grid-full ot-checkbox-group">
               <label>
                 <input
                   type="checkbox"
                   checked={isOpen}
-                  onChange={() => {
-                    setIsOpen(!isOpen);
-                    setError("");
-                  }}
+                  onChange={(e) => setIsOpen(e.target.checked)}
                 />
                 <span>Red abierta (sin contraseña)</span>
               </label>
@@ -555,11 +519,7 @@ export default function Page() {
             </div>
 
             <div className="actions-row form-grid-full">
-              <button
-                type="button"
-                onClick={handlePrintRedQr}
-                className="btn btn-primary"
-              >
+              <button type="button" onClick={handleDownloadAttention} className="btn btn-primary">
                 QR de atención al cliente
               </button>
             </div>
@@ -572,7 +532,7 @@ export default function Page() {
               </p>
               <div className="qr-list">
                 {qrs.map((item, i) => (
-                  <div key={i} className="qr-list-item">
+                  <div key={`${item.ssid}-${i}`} className="qr-list-item">
                     <div className="qr-list-text">
                       <div>
                         <strong>SSID:</strong> {item.ssid}
@@ -604,11 +564,10 @@ export default function Page() {
               </div>
             </div>
           )}
-
         </section>
       </div>
 
-      {/* Hidden canvas used to capture QR for printing/download */}
+      {/* Hidden canvas used to capture WiFi QR for download */}
       <div
         style={{ position: "absolute", left: -9999, top: 0, width: 1, height: 1, overflow: "hidden" }}
         aria-hidden="true"
