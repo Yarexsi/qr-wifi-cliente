@@ -19,6 +19,9 @@ const safeFilename = (value) => {
 // Output size for NIIMBOT B1 labels (50x30mm, horizontal). Aspect ratio must be 5:3.
 const LABEL_OUT_PX = { w: 1000, h: 600 };
 
+// Output size for NIIMBOT 40x30mm labels (horizontal). Aspect ratio must be 4:3.
+const LABEL_40X30_OUT_PX = { w: 800, h: 600 };
+
 // NIIMBOT app may rotate the label “sheet” without rotating the imported image.
 // To keep the content aligned with the horizontal label, we render in portrait base
 // (same pixels swapped) and rotate the final bitmap 90° clockwise.
@@ -517,10 +520,58 @@ export default function Page() {
   const handleDownloadAttention = () => {
     const a = document.createElement("a");
     a.href = "/atencion-whatsapp%20(7).png";
-    a.download = "atencion-whatsapp (7).png";
+    a.download = "Atencion al cliente.png";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  };
+
+  const buildAttention40x30StickerPng = async () => {
+    const labelW = LABEL_40X30_OUT_PX.w;
+    const labelH = LABEL_40X30_OUT_PX.h;
+    const pad = 24;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = labelW;
+    canvas.height = labelH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, labelW, labelH);
+
+    const qrImg = await loadImage("/redqr.png");
+
+    const maxW = labelW - pad * 2;
+    const maxH = labelH - pad * 2;
+    const scale = Math.min(maxW / qrImg.width, maxH / qrImg.height);
+    const drawW = Math.round(qrImg.width * scale);
+    const drawH = Math.round(qrImg.height * scale);
+    const x = Math.round((labelW - drawW) / 2);
+    const y = Math.round((labelH - drawH) / 2);
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(qrImg, x, y, drawW, drawH);
+
+    return canvas.toDataURL("image/png");
+  };
+
+  const handleDownloadAttention40x30 = () => {
+    (async () => {
+      let sticker = null;
+      try {
+        sticker = await buildAttention40x30StickerPng();
+      } catch {
+        sticker = null;
+      }
+
+      const a = document.createElement("a");
+      a.href = sticker || "/redqr.png";
+      a.download = "Atencion al cliente 40x30.png";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    })();
   };
 
   return (
@@ -601,6 +652,9 @@ export default function Page() {
             <div className="actions-row form-grid-full">
               <button type="button" onClick={handleDownloadAttention} className="btn btn-primary">
                 QR de atención al cliente
+              </button>
+              <button type="button" onClick={handleDownloadAttention40x30} className="btn btn-primary">
+                40x30
               </button>
             </div>
           </div>
