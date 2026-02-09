@@ -19,9 +19,6 @@ const safeFilename = (value) => {
 // Output size for NIIMBOT B1 labels (50x30mm, horizontal). Aspect ratio must be 5:3.
 const LABEL_OUT_PX = { w: 1000, h: 600 };
 
-// Output size for NIIMBOT 40x30mm labels (horizontal). Aspect ratio must be 4:3.
-const LABEL_40X30_OUT_PX = { w: 800, h: 600 };
-
 // NIIMBOT app may rotate the label “sheet” without rotating the imported image.
 // To keep the content aligned with the horizontal label, we render in portrait base
 // (same pixels swapped) and rotate the final bitmap 90° clockwise.
@@ -39,6 +36,108 @@ const rotateCanvas90CWTo = (srcCanvas, outW, outH) => {
   ctx.rotate(Math.PI / 2);
   ctx.drawImage(srcCanvas, 0, 0);
   return out;
+};
+
+const getBackgroundBoundsFromImage = (
+  img,
+  { alphaThreshold = 10, tolerance = 24, sampleSize = 12, lumaDelta = 10 } = {}
+) => {
+  const w = Math.max(1, Math.floor(img.naturalWidth || img.width || 1));
+  const h = Math.max(1, Math.floor(img.naturalHeight || img.height || 1));
+
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return { x: 0, y: 0, w, h };
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+
+  const read = (sx, sy, sw, sh) => {
+    try {
+      return ctx.getImageData(sx, sy, sw, sh);
+    } catch {
+      return null;
+    }
+  };
+
+  const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+  const s = clamp(sampleSize, 1, Math.min(w, h));
+
+  // Estimate background from 4 corners.
+  const cornerRects = [
+    { x: 0, y: 0 },
+    { x: w - s, y: 0 },
+    { x: 0, y: h - s },
+    { x: w - s, y: h - s },
+  ];
+
+  let sumR = 0;
+  let sumG = 0;
+  let sumB = 0;
+  let count = 0;
+  for (const p of cornerRects) {
+    const id = read(p.x, p.y, s, s);
+    if (!id) continue;
+    const d = id.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const a = d[i + 3];
+      if (a <= alphaThreshold) continue;
+      sumR += d[i];
+      sumG += d[i + 1];
+      sumB += d[i + 2];
+      count += 1;
+    }
+  }
+
+  // Fallback: if we couldn't sample, return full image.
+  if (count <= 0) return { x: 0, y: 0, w, h };
+
+  const bgR = sumR / count;
+  const bgG = sumG / count;
+  const bgB = sumB / count;
+  const bgL = 0.2126 * bgR + 0.7152 * bgG + 0.0722 * bgB;
+
+  const full = read(0, 0, w, h);
+  if (!full) return { x: 0, y: 0, w, h };
+  const data = full.data;
+
+  let minX = w;
+  let minY = h;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < h; y += 1) {
+    const row = y * w * 4;
+    for (let x = 0; x < w; x += 1) {
+      const i = row + x * 4;
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const a = data[i + 3];
+
+      if (a <= alphaThreshold) continue;
+      const dr = r - bgR;
+      const dg = g - bgG;
+      const db = b - bgB;
+      const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+      const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+      // Treat pixels close to the background as empty margin.
+      // Also ignore "almost background" bright pixels even if compression noise pushes dist up.
+      if (dist <= tolerance && luma >= bgL - lumaDelta) continue;
+      if (luma >= bgL - Math.max(3, lumaDelta / 2) && dist <= tolerance * 2) continue;
+
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+
+  if (maxX < minX || maxY < minY) return { x: 0, y: 0, w, h };
+  return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
 };
 
 const makeStickerCanvas = () => {
@@ -354,7 +453,7 @@ export default function Page() {
     ctx.fillRect(0, 0, labelW, labelH);
     ctx.fillStyle = "#000000";
 
-    const qrImg = await loadImage("/atencion-whatsapp%20(7).png");
+    const qrImg = await loadImage("/redqr.png");
 
     const line1 = "¡Atención al cliente";
     const line2 = "por WhatsApp!";
@@ -519,59 +618,11 @@ export default function Page() {
 
   const handleDownloadAttention = () => {
     const a = document.createElement("a");
-    a.href = "/atencion-whatsapp%20(7).png";
+    a.href = "/redqr.png";
     a.download = "Atencion al cliente.png";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-  };
-
-  const buildAttention40x30StickerPng = async () => {
-    const labelW = LABEL_40X30_OUT_PX.w;
-    const labelH = LABEL_40X30_OUT_PX.h;
-    const pad = 24;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = labelW;
-    canvas.height = labelH;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, labelW, labelH);
-
-    const qrImg = await loadImage("/redqr.png");
-
-    const maxW = labelW - pad * 2;
-    const maxH = labelH - pad * 2;
-    const scale = Math.min(maxW / qrImg.width, maxH / qrImg.height);
-    const drawW = Math.round(qrImg.width * scale);
-    const drawH = Math.round(qrImg.height * scale);
-    const x = Math.round((labelW - drawW) / 2);
-    const y = Math.round((labelH - drawH) / 2);
-
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(qrImg, x, y, drawW, drawH);
-
-    return canvas.toDataURL("image/png");
-  };
-
-  const handleDownloadAttention40x30 = () => {
-    (async () => {
-      let sticker = null;
-      try {
-        sticker = await buildAttention40x30StickerPng();
-      } catch {
-        sticker = null;
-      }
-
-      const a = document.createElement("a");
-      a.href = sticker || "/redqr.png";
-      a.download = "Atencion al cliente 40x30.png";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    })();
   };
 
   return (
@@ -652,9 +703,6 @@ export default function Page() {
             <div className="actions-row form-grid-full">
               <button type="button" onClick={handleDownloadAttention} className="btn btn-primary">
                 QR de atención al cliente
-              </button>
-              <button type="button" onClick={handleDownloadAttention40x30} className="btn btn-primary">
-                40x30
               </button>
             </div>
           </div>
