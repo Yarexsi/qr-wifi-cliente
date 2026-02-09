@@ -351,7 +351,7 @@ export default function Page() {
     ctx.fillRect(0, 0, labelW, labelH);
     ctx.fillStyle = "#000000";
 
-    const qrImg = await loadImage("/redQR1.jpg");
+    const qrImg = await loadImage("/atencion-whatsapp%20(7).png");
 
     const line1 = "¡Atención al cliente";
     const line2 = "por WhatsApp!";
@@ -516,8 +516,8 @@ export default function Page() {
 
   const handleDownloadAttention = () => {
     const a = document.createElement("a");
-    a.href = "/redQR1.jpg";
-    a.download = "redQR1.jpg";
+    a.href = "/atencion-whatsapp%20(7).png";
+    a.download = "atencion-whatsapp (7).png";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
