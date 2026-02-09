@@ -351,7 +351,7 @@ export default function Page() {
     ctx.fillRect(0, 0, labelW, labelH);
     ctx.fillStyle = "#000000";
 
-    const qrImg = await loadImage("/Red7QR.png");
+    const qrImg = await loadImage("/atencion-whatsapp%20(7).png");
 
     const line1 = "¡Atención al cliente";
     const line2 = "por WhatsApp!";
@@ -515,21 +515,12 @@ export default function Page() {
   };
 
   const handleDownloadAttention = () => {
-    (async () => {
-      let sticker = null;
-      try {
-        sticker = await buildAttentionStickerPng();
-      } catch {
-        sticker = null;
-      }
-
-      const a = document.createElement("a");
-      a.href = sticker || "/Red7QR.png";
-      a.download = "atencion-whatsapp.png";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    })();
+    const a = document.createElement("a");
+    a.href = "/atencion-whatsapp%20(7).png";
+    a.download = "atencion-whatsapp (7).png";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   return (
