@@ -625,6 +625,35 @@ export default function Page() {
     document.body.removeChild(a);
   };
 
+  const handleDownloadQRLEO = async () => {
+    const url = "/QRLEO.jpeg";
+    const filename = "QRLEO.jpeg";
+
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error("download_failed");
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      // Fallback: let the browser handle it (still no resizing/re-encoding).
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  };
+
   return (
     <div className="page-container generar-qr-page">
       <div className="operacion-scope">
@@ -703,6 +732,9 @@ export default function Page() {
             <div className="actions-row form-grid-full">
               <button type="button" onClick={handleDownloadAttention} className="btn btn-primary">
                 QR de atención al cliente
+              </button>
+              <button type="button" onClick={handleDownloadQRLEO} className="btn btn-primary">
+                Descargar QRLEO
               </button>
             </div>
           </div>
