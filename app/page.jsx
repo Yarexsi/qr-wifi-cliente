@@ -626,8 +626,8 @@ export default function Page() {
   };
 
   const handleDownloadQRLEO = async () => {
-    const url = "/QRLEO.jpeg";
-    const filename = "QRLEO.jpeg";
+    const url = "/QRb.jpeg";
+    const filename = "QRb.jpeg";
 
     try {
       const res = await fetch(url, { cache: "no-store" });
